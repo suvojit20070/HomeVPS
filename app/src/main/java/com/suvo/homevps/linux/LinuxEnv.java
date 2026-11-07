@@ -9,6 +9,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
@@ -51,6 +53,11 @@ public class LinuxEnv {
             this.linux = linux;
         }
     }
+
+    /** Used when the image is not packed inside the APK. */
+    private static final String ROOTFS_URL =
+            "https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/"
+                    + "ubuntu-base-24.04.5-base-arm64.tar.gz";
 
     private static final String GUEST_PATH =
             "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
@@ -180,15 +187,9 @@ public class LinuxEnv {
             throw new IOException("Cannot create " + root);
         }
 
-        p.update("Copying Ubuntu image...");
         File archive = new File(ctx.getCacheDir(), "rootfs.tar.gz");
-        try (InputStream in = ctx.getAssets().open("rootfs.tar.gz");
-             OutputStream out = new FileOutputStream(archive)) {
-            byte[] buf = new byte[64 * 1024];
-            int n;
-            while ((n = in.read(buf)) > 0) {
-                out.write(buf, 0, n);
-            }
+        if (!copyFromAssets(archive, p)) {
+            download(ROOTFS_URL, archive, p);
         }
 
         p.update("Extracting Ubuntu (1-2 minutes)...");
@@ -218,6 +219,63 @@ public class LinuxEnv {
             throw new IOException("Cannot write install marker");
         }
         p.update("Ubuntu installed");
+    }
+
+    /** Copies the bundled image. Returns false if the APK does not contain it. */
+    private boolean copyFromAssets(File dest, Progress p) throws IOException {
+        InputStream in;
+        try {
+            in = ctx.getAssets().open("rootfs.tar.gz");
+        } catch (IOException e) {
+            return false;
+        }
+        p.update("Copying Ubuntu image...");
+        try (InputStream src = in; OutputStream out = new FileOutputStream(dest)) {
+            byte[] buf = new byte[64 * 1024];
+            int n;
+            while ((n = src.read(buf)) > 0) {
+                out.write(buf, 0, n);
+            }
+        }
+        return true;
+    }
+
+    private void download(String url, File dest, Progress p) throws IOException {
+        p.update("Downloading Ubuntu image...");
+        HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+        conn.setConnectTimeout(20_000);
+        conn.setReadTimeout(60_000);
+        conn.setInstanceFollowRedirects(true);
+        int code = conn.getResponseCode();
+        if (code != 200) {
+            conn.disconnect();
+            throw new IOException("Download failed (HTTP " + code + ")");
+        }
+        long total = conn.getContentLengthLong();
+        long done = 0;
+        int lastPct = -1;
+        try (InputStream in = conn.getInputStream();
+             OutputStream out = new FileOutputStream(dest)) {
+            byte[] buf = new byte[64 * 1024];
+            int n;
+            while ((n = in.read(buf)) > 0) {
+                out.write(buf, 0, n);
+                done += n;
+                if (total > 0) {
+                    int pct = (int) (done * 100 / total);
+                    if (pct != lastPct) {
+                        lastPct = pct;
+                        p.update("Downloading Ubuntu image... " + pct + "% ("
+                                + (done / (1024 * 1024)) + " / " + (total / (1024 * 1024)) + " MB)");
+                    }
+                }
+            }
+        } finally {
+            conn.disconnect();
+        }
+        if (total > 0 && done != total) {
+            throw new IOException("Download incomplete, check your internet and try again");
+        }
     }
 
     private void configure(File root) throws IOException {

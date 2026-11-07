@@ -254,18 +254,26 @@ public class MainActivity extends Activity {
         }
     }
 
+    /** Prefers the WiFi / hotspot / ethernet IP; skips the mobile-data CLAT address (192.0.0.x). */
     private String getLocalIpAddress() {
+        String fallback = null;
         try {
             for (NetworkInterface intf : Collections.list(NetworkInterface.getNetworkInterfaces())) {
                 if (!intf.isUp() || intf.isLoopback()) continue;
+                String name = intf.getName();
                 for (InetAddress addr : Collections.list(intf.getInetAddresses())) {
-                    if (addr instanceof Inet4Address && !addr.isLoopbackAddress()) {
-                        return addr.getHostAddress();
+                    if (!(addr instanceof Inet4Address) || addr.isLoopbackAddress()) continue;
+                    String ip = addr.getHostAddress();
+                    if (ip == null || ip.startsWith("192.0.0.")) continue;
+                    if (name.startsWith("wlan") || name.startsWith("ap")
+                            || name.startsWith("eth") || name.startsWith("swlan")) {
+                        return ip;
                     }
+                    if (fallback == null) fallback = ip;
                 }
             }
         } catch (Exception ignored) {
         }
-        return "127.0.0.1";
+        return fallback != null ? fallback : "127.0.0.1";
     }
 }
