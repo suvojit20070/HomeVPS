@@ -43,14 +43,17 @@ public class LinuxEnv {
         public final File hostDir;
         public final String defaultCwd;
         public final boolean linux;
+        /** Host path of the guest "/" (the rootfs), or null for the Android shell. */
+        public final String guestRoot;
 
         ShellSpec(List<String> command, Map<String, String> env, File hostDir,
-                  String defaultCwd, boolean linux) {
+                  String defaultCwd, boolean linux, String guestRoot) {
             this.command = command;
             this.env = env;
             this.hostDir = hostDir;
             this.defaultCwd = defaultCwd;
             this.linux = linux;
+            this.guestRoot = guestRoot;
         }
     }
 
@@ -117,7 +120,7 @@ public class LinuxEnv {
         env.put("HOME", home);
         env.put("TERM", "dumb");
         env.put("PS1", "");
-        return new ShellSpec(cmd, env, ctx.getFilesDir(), home, false);
+        return new ShellSpec(cmd, env, ctx.getFilesDir(), home, false, null);
     }
 
     public ShellSpec linuxSpec() {
@@ -158,7 +161,7 @@ public class LinuxEnv {
         cmd.add("/bin/bash");
         cmd.add("--login");
 
-        return new ShellSpec(cmd, hostEnv(), ctx.getFilesDir(), "/root", true);
+        return new ShellSpec(cmd, hostEnv(), ctx.getFilesDir(), "/root", true, root);
     }
 
     private Map<String, String> hostEnv() {

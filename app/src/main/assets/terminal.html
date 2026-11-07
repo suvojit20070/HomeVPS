@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0c0f">
+<title>Home VPS Terminal</title>
+<style>
+  :root {
+    --bg: #0b0c0f;
+    --panel: #14161b;
+    --line: #23262e;
+    --text: #d7dae0;
+    --dim: #6b7078;
+    --accent: #4cc2ff;
+    --ok: #3ddc84;
+    --err: #ff6b6b;
+    --warn: #ffd479;
+    --mono: ui-monospace, "JetBrains Mono", "Fira Code", Menlo, Consolas, "Roboto Mono", monospace;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); }
+  body { display: flex; flex-direction: column; font-family: var(--mono); font-size: 14px;
+         height: 100dvh; padding-bottom: env(safe-area-inset-bottom); }
+
+  header { display: flex; align-items: center; gap: 8px; padding: 10px 12px;
+           background: var(--panel); border-bottom: 1px solid var(--line); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--dim); flex: none; margin: 0 2px; }
+  .dot.on { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+  .dot.wait { background: var(--warn); }
+  .title { font-weight: 700; color: #fff; margin: 0 6px 0 0; white-space: nowrap; }
+  .tabs { display: flex; gap: 6px; overflow-x: auto; flex: 1; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab { flex: none; border: 1px solid var(--line); background: #1b1e24; color: var(--dim);
+         padding: 6px 10px; border-radius: 8px; font: inherit; font-size: 12px; margin: 0 1px; cursor: pointer; }
+  .tab.active { background: var(--ok); color: #06210f; border-color: var(--ok); font-weight: 700; }
+  .tab.ended { text-decoration: line-through; opacity: .6; }
+  .icon-btn { flex: none; border: 1px solid var(--line); background: #1b1e24; color: var(--text);
+              width: 34px; height: 30px; border-radius: 8px; font: inherit; font-size: 16px; margin: 0 2px; cursor: pointer; }
+
+  #screen { flex: 1; overflow-y: auto; padding: 10px 12px 4px; white-space: pre-wrap;
+            word-break: break-word; line-height: 1.45; overscroll-behavior: contain; }
+  .ln { min-height: 1.45em; }
+  .ln.err { color: var(--err); }
+  .ln.sys { color: var(--dim); font-style: italic; }
+  .ln.cmd { color: #fff; margin-top: 4px; }
+  .ln.cmd .p { color: var(--accent); }
+  .b { font-weight: 700; }
+
+  .input-row { display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+               border-top: 1px solid var(--line); background: var(--panel); }
+  .prompt { color: var(--accent); white-space: nowrap; margin: 0 2px; }
+  .prompt.busy { color: var(--warn); }
+  #cmd { flex: 1; min-width: 0; background: transparent; border: none; outline: none; color: #fff;
+         font: inherit; font-size: 15px; padding: 6px 0; margin: 0 2px; caret-color: var(--ok); }
+  .send { border: none; background: var(--ok); color: #06210f; border-radius: 8px; width: 40px; height: 34px;
+          font-size: 16px; font-weight: 700; margin: 0 2px; cursor: pointer; }
+
+  .keys { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; padding: 6px 12px 10px;
+          background: var(--panel); }
+  .key { border: 1px solid var(--line); background: #1b1e24; color: var(--text); border-radius: 8px;
+         padding: 9px 0; font: inherit; font-size: 12px; margin: 1px; cursor: pointer; }
+  .key:active, .tab:active, .icon-btn:active, .send:active { filter: brightness(1.4); }
+  .key.red { color: var(--err); }
+
+  #login { position: fixed; inset: 0; background: rgba(5,6,8,.92); display: none;
+           align-items: center; justify-content: center; padding: 20px; z-index: 10; }
+  #login.show { display: flex; }
+  .card { width: 100%; max-width: 420px; background: var(--panel); border: 1px solid var(--line);
+          border-radius: 14px; padding: 18px; }
+  .card h2 { margin: 4px 4px 14px; font-size: 18px; color: #fff; }
+  .card label { display: block; color: var(--dim); font-size: 12px; margin: 10px 4px 6px; }
+  .card input { width: 100%; background: #0f1115; border: 1px solid var(--line); color: #fff;
+                border-radius: 8px; padding: 10px; font: inherit; outline: none; margin: 0; }
+  .card input:focus { border-color: var(--accent); }
+  .card .go { width: 100%; margin: 16px 0 4px; border: none; background: var(--accent); color: #04121b;
+              border-radius: 8px; padding: 11px; font: inherit; font-weight: 700; cursor: pointer; }
+  .card .msg { color: var(--err); font-size: 12px; margin: 8px 4px 0; min-height: 1em; }
+</style>
+</head>
+<body>
+
+<header>
+  <span id="dot" class="dot"></span>
+  <span class="title">~$ vps</span>
+  <div id="tabs" class="tabs"></div>
+  <button class="icon-btn" id="newTab" title="New session">+</button>
+  <button class="icon-btn" id="settingsBtn" title="Connection">&#9881;</button>
+</header>
+
+<div id="screen"></div>
+
+<div class="input-row">
+  <span id="prompt" class="prompt">#</span>
+  <input id="cmd" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
+         enterkeyhint="send" placeholder="command">
+  <button class="send" id="sendBtn">&#9166;</button>
+</div>
+
+<div class="keys">
+  <button class="key red" data-k="ctrlc">Ctrl+C</button>
+  <button class="key" data-k="ctrld">Ctrl+D</button>
+  <button class="key" data-k="up">&uarr;</button>
+  <button class="key" data-k="down">&darr;</button>
+  <button class="key" data-k="clear">Clear</button>
+  <button class="key" data-k="kill">Kill</button>
+</div>
+
+<div id="login">
+  <div class="card">
+    <h2>Connect to Home VPS</h2>
+    <div id="serverField">
+      <label for="server">Server URL</label>
+      <input id="server" placeholder="http://192.168.1.50:8090" autocapitalize="off" autocorrect="off">
+    </div>
+    <label for="key">API key</label>
+    <input id="key" placeholder="Paste the key from the app" autocapitalize="off" autocorrect="off">
+    <button class="go" id="connectBtn">Connect</button>
+    <div class="msg" id="loginMsg"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ------------------------------------------------------------ storage
+  // localStorage can be missing or throw in some contexts; keep it optional.
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* ignore */ } },
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const screen = $("screen"), cmdInput = $("cmd"), promptEl = $("prompt");
+  const tabsEl = $("tabs"), dot = $("dot");
+
+  const servedByVps = location.protocol === "http:" || location.protocol === "https:";
+  const params = new URLSearchParams(location.search);
+
+  const state = {
+    base: servedByVps ? location.origin : (store.get("hv_base") || ""),
+    key: params.get("key") || store.get("hv_key") || "",
+    sessions: [],
+    active: null,
+    ws: null,
+    busy: false,
+    history: [],
+    histIdx: 0,
+  };
+
+  if (params.get("key")) {
+    store.set("hv_key", params.get("key"));
+    // Keep the key out of the address bar after reading it.
+    try { history.replaceState(null, "", location.pathname); } catch (e) { /* ignore */ }
+  }
+
+  // ------------------------------------------------------------ http
+  async function api(path, opts) {
+    opts = opts || {};
+    const res = await fetch(state.base + path, {
+      method: opts.method || "GET",
+      headers: { "Authorization": "Bearer " + state.key, "Content-Type": "application/json" },
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
+    });
+    let data = {};
+    try { data = await res.json(); } catch (e) { /* empty body */ }
+    if (!res.ok) {
+      const err = new Error(data.error || ("HTTP " + res.status));
+      err.status = res.status;
+      throw err;
+    }
+    return data;
+  }
+
+  function wsUrl(name) {
+    const u = new URL(state.base);
+    const proto = u.protocol === "https:" ? "wss:" : "ws:";
+    return proto + "//" + u.host + "/sessions/" + encodeURIComponent(name)
+      + "/stream?key=" + encodeURIComponent(state.key);
+  }
+
+  // ------------------------------------------------------------ screen
+  const MAX_LINES = 3000;
+  const SGR_COLORS = {
+    30: "#5c6370", 31: "#ff6b6b", 32: "#3ddc84", 33: "#ffd479", 34: "#4cc2ff", 35: "#c678dd", 36: "#56d4dd", 37: "#d7dae0",
+    90: "#7f848e", 91: "#ff8787", 92: "#69f0ae", 93: "#ffe08a", 94: "#7fd4ff", 95: "#d7a6ff", 96: "#8be9fd", 97: "#ffffff",
+  };
+
+  function escapeHtml(s) {
+    return s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  }
+
+  // Minimal ANSI handling: colours + bold; other escape codes are dropped.
+  function ansiToHtml(text) {
+    // A carriage return without newline redraws the line (progress bars): keep the last part.
+    const cr = text.lastIndexOf("\r");
+    if (cr >= 0) text = text.slice(cr + 1);
+    let html = "", color = null, bold = false;
+    const re = /\x1b\[([0-9;]*)([A-Za-z])|\x1b[()][A-Za-z0-9]|\x1b./g;
+    let last = 0, m;
+    const flush = (chunk) => {
+      if (!chunk) return;
+      if (color || bold) {
+        html += '<span' + (bold ? ' class="b"' : "") + (color ? ' style="color:' + color + '"' : "") + ">"
+          + escapeHtml(chunk) + "</span>";
+      } else {
+        html += escapeHtml(chunk);
+      }
+    };
+    while ((m = re.exec(text)) !== null) {
+      flush(text.slice(last, m.index));
+      last = re.lastIndex;
+      if (m[2] === "m") {
+        const codes = (m[1] || "0").split(";").map(Number);
+        for (const c of codes) {
+          if (c === 0) { color = null; bold = false; }
+          else if (c === 1) bold = true;
+          else if (c === 22) bold = false;
+          else if (c === 39) color = null;
+          else if (SGR_COLORS[c]) color = SGR_COLORS[c];
+        }
+      }
+    }
+    flush(text.slice(last));
+    return html;
+  }
+
+  function nearBottom() {
+    return screen.scrollHeight - screen.scrollTop - screen.clientHeight < 60;
+  }
+
+  function addLine(html, cls) {
+    const stick = nearBottom();
+    const div = document.createElement("div");
+    div.className = "ln" + (cls ? " " + cls : "");
+    div.innerHTML = html;
+    screen.appendChild(div);
+    while (screen.childElementCount > MAX_LINES) screen.removeChild(screen.firstChild);
+    if (stick) screen.scrollTop = screen.scrollHeight;
+  }
+
+  const out = (text) => addLine(ansiToHtml(text));
+  const errOut = (text) => addLine(ansiToHtml(text), "err");
+  const sys = (text) => addLine(escapeHtml(text), "sys");
+  function echoCmd(text) {
+    addLine('<span class="p">' + escapeHtml(promptText()) + "</span> " + escapeHtml(text), "cmd");
+    screen.scrollTop = screen.scrollHeight;
+  }
+
+  function promptText() {
+    return (state.active || "vps") + (state.busy ? " …" : " #");
+  }
+
+  function setBusy(b) {
+    state.busy = b;
+    promptEl.textContent = promptText();
+    promptEl.classList.toggle("busy", b);
+  }
+
+  function setDot(mode) {
+    dot.className = "dot" + (mode ? " " + mode : "");
+  }
+
+  // ------------------------------------------------------------ sessions
+  function renderTabs() {
+    tabsEl.innerHTML = "";
+    state.sessions.forEach((s, i) => {
+      const b = document.createElement("button");
+      b.className = "tab" + (s.name === state.active ? " active" : "") + (s.status === "stopped" ? " ended" : "");
+      b.textContent = (i + 1) + ":" + s.name;
+      b.onclick = () => openSession(s.name);
+      tabsEl.appendChild(b);
+    });
+    const act = tabsEl.querySelector(".active");
+    if (act) act.scrollIntoView({ inline: "nearest", block: "nearest" });
+  }
+
+  async function refreshSessions() {
+    const data = await api("/sessions");
+    state.sessions = (data.sessions || []).sort((a, b) => a.created_at - b.created_at);
+    renderTabs();
+  }
+
+  async function createSession(name) {
+    await api("/sessions", { method: "POST", body: { name } });
+    await refreshSessions();
+    openSession(name);
+  }
+
+  function nextName() {
+    let i = 1;
+    const taken = new Set(state.sessions.map((s) => s.name));
+    while (taken.has("s" + i)) i++;
+    return "s" + i;
+  }
+
+  function openSession(name) {
+    if (state.ws) { state.ws.onclose = null; state.ws.close(); state.ws = null; }
+    state.active = name;
+    setBusy(false);
+    screen.innerHTML = "";
+    renderTabs();
+
+    const info = state.sessions.find((s) => s.name === name);
+    if (info && info.status === "stopped") {
+      sys("[session '" + name + "' has ended - type any command to restart it]");
+      setDot("");
+      return;
+    }
+
+    setDot("wait");
+    const ws = new WebSocket(wsUrl(name));
+    state.ws = ws;
+    ws.onopen = () => { setDot("on"); cmdInput.focus(); };
+    ws.onmessage = (ev) => {
+      let msg;
+      try { msg = JSON.parse(ev.data); } catch (e) { return; }
+      if (msg.type === "output") out(msg.line);
+      else if (msg.type === "error") errOut(msg.line);
+      else if (msg.type === "closed") {
+        sys("[session ended, exit " + msg.exit_code + "]");
+        setBusy(false);
+        refreshSessions().catch(() => {});
+      }
+    };
+    ws.onclose = () => {
+      if (state.ws !== ws) return;
+      setDot("");
+      // Reconnect while the session is still alive (network blip, phone screen off...).
+      setTimeout(() => {
+        if (state.ws !== ws || state.active !== name) return;
+        const s = state.sessions.find((x) => x.name === name);
+        if (s && s.status !== "stopped") openSession(name);
+      }, 2000);
+    };
+  }
+
+  // ------------------------------------------------------------ commands
+  async function run(raw) {
+    const text = raw;
+    if (!state.active) return;
+
+    // While a command runs, Enter feeds its stdin (answer prompts like [Y/n]).
+    if (state.busy) {
+      addLine(escapeHtml(text), "cmd");
+      if (state.ws && state.ws.readyState === 1) {
+        state.ws.send(JSON.stringify({ type: "input", data: text + "\n" }));
+      }
+      return;
+    }
+
+    const trimmed = text.trim();
+    if (!trimmed) { echoCmd(""); return; }
+    if (state.history[state.history.length - 1] !== trimmed) state.history.push(trimmed);
+    state.histIdx = state.history.length;
+
+    if (trimmed === "clear" || trimmed === "cls") { screen.innerHTML = ""; return; }
+
+    const info = state.sessions.find((s) => s.name === state.active);
+    if (info && info.status === "stopped") {
+      // Restart an ended session with the same name, then run the command.
+      try {
+        await api("/sessions/" + encodeURIComponent(state.active), { method: "DELETE" }).catch(() => {});
+        await api("/sessions", { method: "POST", body: { name: state.active } });
+        await refreshSessions();
+        openSession(state.active);
+        await new Promise((r) => setTimeout(r, 300));
+      } catch (e) {
+        sys("[restart failed: " + e.message + "]");
+        return;
+      }
+    }
+
+    echoCmd(trimmed);
+    setBusy(true);
+    try {
+      const r = await api("/sessions/" + encodeURIComponent(state.active) + "/exec", {
+        method: "POST",
+        body: { command: trimmed, timeout: 30 * 60 * 1000 },
+      });
+      // Output already arrived over the WebSocket; let the last lines land first.
+      await new Promise((res) => setTimeout(res, 80));
+      if (r.stopped) {
+        await refreshSessions().catch(() => {});
+      } else if (r.timed_out) {
+        sys("[still running in the background]");
+      } else if (r.exit_code !== 0) {
+        sys("[exit " + r.exit_code + "]");
+      }
+    } catch (e) {
+      sys("[error: " + e.message + "]");
+      if (e.status === 401) showLogin("API key was rejected");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function interrupt() {
+    if (!state.active) return;
+    sys("^C");
+    try {
+      await api("/sessions/" + encodeURIComponent(state.active) + "/interrupt", { method: "POST" });
+    } catch (e) {
+      sys("[interrupt failed: " + e.message + "]");
+    }
+  }
+
+  async function killSession() {
+    if (!state.active) return;
+    const name = state.active;
+    if (!confirmKill(name)) return;
+    try {
+      await api("/sessions/" + encodeURIComponent(name), { method: "DELETE" });
+    } catch (e) { /* already gone */ }
+    if (state.ws) { state.ws.onclose = null; state.ws.close(); state.ws = null; }
+    await refreshSessions().catch(() => {});
+    if (state.sessions.length) openSession(state.sessions[0].name);
+    else createSession("main").catch((e) => sys("[error: " + e.message + "]"));
+  }
+
+  // Inline confirm (no browser dialogs): second tap within 3s confirms.
+  let killArmed = null;
+  function confirmKill(name) {
+    if (killArmed === name) { killArmed = null; return true; }
+    killArmed = name;
+    sys("[tap Kill again to stop session '" + name + "']");
+    setTimeout(() => { if (killArmed === name) killArmed = null; }, 3000);
+    return false;
+  }
+
+  function historyMove(dir) {
+    if (!state.history.length) return;
+    state.histIdx = Math.max(0, Math.min(state.history.length, state.histIdx + dir));
+    cmdInput.value = state.history[state.histIdx] || "";
+    setTimeout(() => cmdInput.setSelectionRange(cmdInput.value.length, cmdInput.value.length), 0);
+  }
+
+  function submit() {
+    const v = cmdInput.value;
+    cmdInput.value = "";
+    run(v);
+    cmdInput.focus();
+  }
+
+  // ------------------------------------------------------------ connect
+  function showLogin(message) {
+    $("serverField").style.display = servedByVps ? "none" : "block";
+    $("server").value = state.base;
+    $("key").value = state.key;
+    $("loginMsg").textContent = message || "";
+    $("login").classList.add("show");
+  }
+
+  async function connect() {
+    setDot("wait");
+    try {
+      await refreshSessions();
+    } catch (e) {
+      setDot("");
+      showLogin(e.status === 401 ? "API key was rejected" : "Cannot reach the server: " + e.message);
+      return;
+    }
+    $("login").classList.remove("show");
+    if (!state.sessions.length) {
+      await createSession("main");
+    } else {
+      const alive = state.sessions.find((s) => s.status !== "stopped") || state.sessions[0];
+      openSession(alive.name);
+    }
+  }
+
+  // ------------------------------------------------------------ events
+  $("connectBtn").onclick = () => {
+    if (!servedByVps) {
+      state.base = $("server").value.trim().replace(/\/+$/, "");
+      store.set("hv_base", state.base);
+    }
+    state.key = $("key").value.trim();
+    store.set("hv_key", state.key);
+    connect();
+  };
+  $("settingsBtn").onclick = () => showLogin("");
+  $("newTab").onclick = () => createSession(nextName()).catch((e) => sys("[error: " + e.message + "]"));
+  $("sendBtn").onclick = submit;
+
+  cmdInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); submit(); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); historyMove(-1); }
+    else if (e.key === "ArrowDown") { e.preventDefault(); historyMove(1); }
+    else if (e.key === "c" && e.ctrlKey) { e.preventDefault(); interrupt(); }
+    else if (e.key === "l" && e.ctrlKey) { e.preventDefault(); screen.innerHTML = ""; }
+  });
+
+  document.querySelectorAll(".key").forEach((btn) => {
+    // Keep the keyboard open when tapping the extra keys.
+    btn.addEventListener("mousedown", (e) => e.preventDefault());
+    btn.addEventListener("click", () => {
+      const k = btn.dataset.k;
+      if (k === "ctrlc") interrupt();
+      else if (k === "ctrld") {
+        if (state.ws && state.ws.readyState === 1) state.ws.send(JSON.stringify({ type: "signal", name: "EOF" }));
+      }
+      else if (k === "up") historyMove(-1);
+      else if (k === "down") historyMove(1);
+      else if (k === "clear") screen.innerHTML = "";
+      else if (k === "kill") killSession();
+      cmdInput.focus();
+    });
+  });
+
+  screen.addEventListener("click", () => {
+    if (!window.getSelection().toString()) cmdInput.focus();
+  });
+
+  // ------------------------------------------------------------ start
+  setBusy(false);
+  if (state.key && state.base) connect();
+  else showLogin("");
+})();
+</script>
+</body>
+</html>

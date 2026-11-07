@@ -72,7 +72,7 @@ public class VpsService extends Service {
                 prefs.getMaxSessions(),
                 prefs.getIdleTimeoutMin());
 
-        apiServer = new ApiServer(prefs.getPort(), prefs.getApiKey(), sessionManager);
+        apiServer = new ApiServer(prefs.getPort(), prefs.getApiKey(), sessionManager, loadAsset("terminal.html"));
         try {
             apiServer.start();
             RUNNING = true;
@@ -98,6 +98,19 @@ public class VpsService extends Service {
             sessionManager = null;
         }
         releaseWakeLock();
+    }
+
+    private String loadAsset(String name) {
+        try (java.io.InputStream in = getAssets().open(name)) {
+            java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
+            byte[] b = new byte[16 * 1024];
+            int n;
+            while ((n = in.read(b)) > 0) buf.write(b, 0, n);
+            return buf.toString("UTF-8");
+        } catch (Exception e) {
+            Log.w(TAG, "Cannot load asset " + name, e);
+            return null;
+        }
     }
 
     private void acquireWakeLock() {

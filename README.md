@@ -47,19 +47,37 @@ No external libraries. `org.json` ships with Android. `minSdk 24`, `targetSdk 34
 ## API
 
 Base URL: `http://<phone-ip>:8090` (port is configurable).
-Auth: send `Authorization: Bearer <API_KEY>` (or `X-API-Key: <API_KEY>`).
+Auth: send `Authorization: Bearer <API_KEY>`, `X-API-Key: <API_KEY>`, or `?key=<API_KEY>`
+(the query form exists for browsers, which cannot set headers on a WebSocket).
 The key is shown on the dashboard.
 
 | Method | Path | Body | Purpose |
 |---|---|---|---|
-| GET | `/health` | — | Liveness, uptime, session count (no auth) |
+| GET | `/` or `/terminal` | — | Web terminal page (no auth; the page asks for the key) |
+| GET | `/health` | — | Liveness, uptime, session count, active shell (no auth) |
 | GET | `/sessions` | — | List sessions + status |
 | POST | `/sessions` | `{"name","cwd"}` | Start a named session |
 | DELETE | `/sessions/{name}` | — | Force-stop a session |
 | POST | `/sessions/{name}/exec` | `{"command","timeout","stream"}` | Run a command |
 | POST | `/sessions/{name}/input` | `{"data"}` | Send raw stdin (answer prompts, keys) |
+| POST | `/sessions/{name}/interrupt` | — | Ctrl+C the running command |
 | GET | `/sessions/{name}/output?since=N&tail=M` | — | Replay buffered output |
 | GET | `/sessions/{name}/stream` | — | WebSocket: live terminal |
+
+### Web terminal
+
+Open `http://<phone-ip>:8090/` in any browser (or tap **Open web terminal** in the app,
+which passes the key for you). Features: one tab per session, live output with
+colours, stderr in red, `[exit N]` after failed commands, command history (↑ ↓),
+Ctrl+C, Ctrl+D, and Kill. While a command is running, Enter sends your text to its
+stdin, so `[Y/n]` prompts can be answered.
+
+Ctrl+C sends SIGINT to the running program. If the command is still running 1.5 s
+later (for example a `while true` loop), the shell is restarted in the same folder;
+shell variables are reset in that case.
+
+Sessions use pipes, not a PTY, so full-screen programs (`nano`, `vim`, `htop`) do not
+work here. Use `apt install -y` to skip confirmation prompts in scripts.
 
 ### Start / run / stop
 
@@ -231,4 +249,3 @@ Tunnel (Phase 4) to get a stable public HTTPS URL:
   disable the killer via ADB:
   `adb shell settings put global settings_enable_monitor_phantom_procs false`
 - Ports below 1024 need root. The server uses 8090; put HTTPS in front via the tunnel.
-# HomeVPS

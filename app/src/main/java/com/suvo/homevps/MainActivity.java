@@ -32,7 +32,7 @@ public class MainActivity extends Activity {
     private Prefs prefs;
     private LinuxEnv linux;
     private TextView statusText, endpointText, keyText, ipText, linuxStatusText;
-    private Button toggleButton, copyKeyButton, regenKeyButton, batteryButton, installLinuxButton;
+    private Button toggleButton, copyKeyButton, regenKeyButton, batteryButton, installLinuxButton, terminalButton;
     private volatile boolean installing = false;
     private Switch autostartSwitch;
 
@@ -63,6 +63,14 @@ public class MainActivity extends Activity {
         autostartSwitch = findViewById(R.id.autostartSwitch);
         linuxStatusText = findViewById(R.id.linuxStatusText);
         installLinuxButton = findViewById(R.id.installLinuxButton);
+        terminalButton = findViewById(R.id.terminalButton);
+
+        terminalButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                openWebTerminal();
+            }
+        });
 
         installLinuxButton.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -176,6 +184,19 @@ public class MainActivity extends Activity {
         } else {
             batteryButton.setText("Allow unrestricted battery");
             batteryButton.setEnabled(true);
+        }
+    }
+
+    private void openWebTerminal() {
+        if (!VpsService.RUNNING) {
+            Toast.makeText(this, "Start the server first", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String url = "http://127.0.0.1:" + prefs.getPort() + "/?key=" + Uri.encode(prefs.getApiKey());
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+        } catch (Exception e) {
+            Toast.makeText(this, "No browser found", Toast.LENGTH_SHORT).show();
         }
     }
 

@@ -129,6 +129,13 @@
                 android:textColor="#FFFFFF"
                 android:textSize="16sp"
                 android:fontFamily="monospace" />
+
+            <Button
+                android:id="@+id/terminalButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_margin="6dp"
+                android:text="Open web terminal" />
         </LinearLayout>
 
         <!-- API key card -->

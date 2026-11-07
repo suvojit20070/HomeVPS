@@ -28,15 +28,20 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * Dependency-free HTTP/1.1 server exposing the session-manager API.
  *
- * Routes (all under Bearer-token auth except GET /health):
+ * Routes (all under Bearer-token auth except GET /, /terminal and /health):
+ *   GET    /  or /terminal                 web terminal page
  *   GET    /health
  *   GET    /sessions
  *   POST   /sessions                      {name, cwd}
  *   DELETE /sessions/{name}
  *   POST   /sessions/{name}/exec          {command, timeout, stream}
  *   POST   /sessions/{name}/input         {data}
+ *   POST   /sessions/{name}/interrupt     Ctrl+C the running command
  *   GET    /sessions/{name}/output?since=N&tail=M
  *   GET    /sessions/{name}/stream        (WebSocket upgrade)
+ *
+ * Auth: "Authorization: Bearer <key>", "X-API-Key: <key>", or "?key=<key>"
+ * (the query form exists because browsers cannot set headers on WebSockets).
  *
  * exec with "stream": true returns Server-Sent Events (text/event-stream):
  *   event: output / error   data: {"line": "...", "offset": N}
@@ -50,6 +55,7 @@ public class ApiServer {
     private final int port;
     private final String apiKey;
     private final SessionManager sessions;
+    private final String terminalHtml;
     private final long startedAt = System.currentTimeMillis();
 
     private ServerSocket serverSocket;
@@ -57,10 +63,11 @@ public class ApiServer {
     private final AtomicBoolean running = new AtomicBoolean(false);
     private Thread acceptThread;
 
-    public ApiServer(int port, String apiKey, SessionManager sessions) {
+    public ApiServer(int port, String apiKey, SessionManager sessions, String terminalHtml) {
         this.port = port;
         this.apiKey = apiKey;
         this.sessions = sessions;
+        this.terminalHtml = terminalHtml;
     }
 
     public void start() throws IOException {
@@ -165,7 +172,25 @@ public class ApiServer {
                        String method, String path, String query,
                        Map<String, String> headers, byte[] body) throws Exception {
 
-        if (path.equals("/health") || path.equals("/")) {
+        if (method.equals("OPTIONS")) {
+            // CORS preflight, so the terminal page also works when opened from another origin.
+            String resp = "HTTP/1.1 204 No Content\r\n"
+                    + CORS_HEADERS
+                    + "Access-Control-Max-Age: 86400\r\n"
+                    + "Connection: close\r\n\r\n";
+            out.write(resp.getBytes(StandardCharsets.UTF_8));
+            out.flush();
+            close(client);
+            return;
+        }
+
+        if (method.equals("GET") && (path.equals("/") || path.equals("/terminal"))) {
+            sendHtml(out, terminalHtml);
+            close(client);
+            return;
+        }
+
+        if (path.equals("/health")) {
             JSONObject o = new JSONObject();
             o.put("ok", true);
             o.put("service", "home-vps");
@@ -178,7 +203,7 @@ public class ApiServer {
         }
 
         // Auth for everything else.
-        if (!authorized(headers)) {
+        if (!authorized(headers, parseQuery(query))) {
             sendJson(out, 401, err("unauthorized"));
             close(client);
             return;
@@ -217,6 +242,19 @@ public class ApiServer {
 
             if (seg.length == 3 && seg[2].equals("input") && method.equals("POST")) {
                 handleInput(out, s, body);
+                close(client);
+                return;
+            }
+
+            if (seg.length == 3 && seg[2].equals("interrupt") && method.equals("POST")) {
+                if (s == null || !s.isAlive()) {
+                    sendJson(out, 404, err("session not found or stopped"));
+                } else {
+                    JSONObject o = new JSONObject();
+                    o.put("status", "interrupted");
+                    o.put("signalled", s.interrupt());
+                    sendJson(out, 200, o);
+                }
                 close(client);
                 return;
             }
@@ -347,6 +385,7 @@ public class ApiServer {
         // SSE streaming.
         String head = "HTTP/1.1 200 OK\r\n"
                 + "Content-Type: text/event-stream\r\n"
+                + CORS_HEADERS
                 + "Cache-Control: no-cache\r\n"
                 + "Connection: close\r\n"
                 + "X-Accel-Buffering: no\r\n\r\n";
@@ -505,10 +544,8 @@ public class ApiServer {
             if (type.equals("input")) {
                 s.sendInput(msg.optString("data", ""));
             } else if (type.equals("signal")) {
-                // Without a PTY we can only interrupt by sending the raw control byte.
                 String name = msg.optString("name", "");
-                if (name.equals("SIGINT")) s.sendInput("\u0003");
-                else if (name.equals("SIGTSTP")) s.sendInput("\u001a");
+                if (name.equals("SIGINT")) s.interrupt();
                 else if (name.equals("EOF")) s.sendInput("\u0004");
             }
             // "resize" is a no-op until the Phase 2 PTY lands.
@@ -518,7 +555,9 @@ public class ApiServer {
 
     // ---------------------------------------------------------------- helpers
 
-    private boolean authorized(Map<String, String> headers) {
+    private boolean authorized(Map<String, String> headers, Map<String, String> query) {
+        String q = query.get("key");
+        if (q != null && constantEquals(q.trim(), apiKey)) return true;
         String auth = headers.get("authorization");
         if (auth != null && auth.startsWith("Bearer ")) {
             return constantEquals(auth.substring(7).trim(), apiKey);
@@ -614,7 +653,25 @@ public class ApiServer {
         String head = "HTTP/1.1 " + status + " " + statusText(status) + "\r\n"
                 + "Content-Type: application/json; charset=utf-8\r\n"
                 + "Content-Length: " + payload.length + "\r\n"
-                + "Access-Control-Allow-Origin: *\r\n"
+                + CORS_HEADERS
+                + "Connection: close\r\n\r\n";
+        out.write(head.getBytes(StandardCharsets.UTF_8));
+        out.write(payload);
+        out.flush();
+    }
+
+    private static final String CORS_HEADERS =
+            "Access-Control-Allow-Origin: *\r\n"
+                    + "Access-Control-Allow-Headers: Authorization, Content-Type, X-API-Key\r\n"
+                    + "Access-Control-Allow-Methods: GET, POST, DELETE, OPTIONS\r\n";
+
+    private static void sendHtml(OutputStream out, String html) throws IOException {
+        byte[] payload = (html == null ? "<h1>Terminal page missing</h1>" : html)
+                .getBytes(StandardCharsets.UTF_8);
+        String head = "HTTP/1.1 200 OK\r\n"
+                + "Content-Type: text/html; charset=utf-8\r\n"
+                + "Content-Length: " + payload.length + "\r\n"
+                + "Cache-Control: no-cache\r\n"
                 + "Connection: close\r\n\r\n";
         out.write(head.getBytes(StandardCharsets.UTF_8));
         out.write(payload);
