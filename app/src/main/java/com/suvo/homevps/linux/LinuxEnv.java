@@ -1,0 +1,302 @@
+package com.suvo.homevps.linux;
+
+import android.content.Context;
+
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Ubuntu Linux environment running under proot (no root needed).
+ *
+ * Binaries are packed into the APK at build time (see scripts/fetch-linux.sh):
+ *   jniLibs/arm64-v8a/libproot.so         proot executable
+ *   jniLibs/arm64-v8a/libproot-loader.so  proot loader
+ *   jniLibs/arm64-v8a/libtalloc.so        proot dependency
+ *   assets/rootfs.tar.gz                  Ubuntu base rootfs (arm64)
+ *
+ * They live in nativeLibraryDir because Android 10+ refuses to execute files
+ * from the app's writable data folder.
+ */
+public class LinuxEnv {
+
+    public interface Progress {
+        void update(String message);
+    }
+
+    /** Everything needed to launch one session's shell. */
+    public static class ShellSpec {
+        public final List<String> command;
+        public final Map<String, String> env;
+        public final File hostDir;
+        public final String defaultCwd;
+        public final boolean linux;
+
+        ShellSpec(List<String> command, Map<String, String> env, File hostDir,
+                  String defaultCwd, boolean linux) {
+            this.command = command;
+            this.env = env;
+            this.hostDir = hostDir;
+            this.defaultCwd = defaultCwd;
+            this.linux = linux;
+        }
+    }
+
+    private static final String GUEST_PATH =
+            "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
+
+    private final Context ctx;
+
+    public LinuxEnv(Context context) {
+        this.ctx = context.getApplicationContext();
+    }
+
+    // ------------------------------------------------------------- paths
+
+    public File rootfs() {
+        return new File(ctx.getFilesDir(), "ubuntu");
+    }
+
+    private File nativeDir() {
+        return new File(ctx.getApplicationInfo().nativeLibraryDir);
+    }
+
+    private File proot() {
+        return new File(nativeDir(), "libproot.so");
+    }
+
+    private File loader() {
+        return new File(nativeDir(), "libproot-loader.so");
+    }
+
+    private File tmpDir() {
+        File f = new File(ctx.getCacheDir(), "proot-tmp");
+        //noinspection ResultOfMethodCallIgnored
+        f.mkdirs();
+        return f;
+    }
+
+    /** True if the APK contains the proot binaries (arm64-v8a builds only). */
+    public boolean isBundled() {
+        return proot().exists() && loader().exists();
+    }
+
+    public boolean isInstalled() {
+        return isBundled() && new File(rootfs(), ".installed").exists();
+    }
+
+    // ------------------------------------------------------------- shells
+
+    /** Ubuntu if installed, otherwise the Android system shell. */
+    public ShellSpec currentSpec() {
+        return isInstalled() ? linuxSpec() : systemSpec();
+    }
+
+    public ShellSpec systemSpec() {
+        List<String> cmd = new ArrayList<>();
+        cmd.add("/system/bin/sh");
+        Map<String, String> env = new HashMap<>();
+        String home = ctx.getFilesDir().getAbsolutePath();
+        env.put("HOME", home);
+        env.put("TERM", "dumb");
+        env.put("PS1", "");
+        return new ShellSpec(cmd, env, ctx.getFilesDir(), home, false);
+    }
+
+    public ShellSpec linuxSpec() {
+        String root = rootfs().getAbsolutePath();
+        List<String> cmd = new ArrayList<>();
+        cmd.add(proot().getAbsolutePath());
+        cmd.add("--kill-on-exit");
+        cmd.add("--link2symlink");
+        cmd.add("-0");
+        cmd.add("-r");
+        cmd.add(root);
+        cmd.add("-b");
+        cmd.add("/dev");
+        cmd.add("-b");
+        cmd.add("/proc");
+        cmd.add("-b");
+        cmd.add("/sys");
+        cmd.add("-b");
+        cmd.add(root + "/tmp:/dev/shm");
+        File sdcard = new File("/storage/emulated/0");
+        if (sdcard.isDirectory() && sdcard.canRead()) {
+            cmd.add("-b");
+            cmd.add("/storage/emulated/0:/sdcard");
+        }
+        cmd.add("-w");
+        cmd.add("/root");
+        // Start the guest with a clean environment.
+        cmd.add("/usr/bin/env");
+        cmd.add("-i");
+        cmd.add("HOME=/root");
+        cmd.add("USER=root");
+        cmd.add("LOGNAME=root");
+        cmd.add("PATH=" + GUEST_PATH);
+        cmd.add("TERM=dumb");
+        cmd.add("LANG=C.UTF-8");
+        cmd.add("PYTHONUNBUFFERED=1");
+        cmd.add("DEBIAN_FRONTEND=noninteractive");
+        cmd.add("/bin/bash");
+        cmd.add("--login");
+
+        return new ShellSpec(cmd, hostEnv(), ctx.getFilesDir(), "/root", true);
+    }
+
+    private Map<String, String> hostEnv() {
+        Map<String, String> env = new HashMap<>();
+        env.put("LD_LIBRARY_PATH", nativeDir().getAbsolutePath());
+        env.put("PROOT_LOADER", loader().getAbsolutePath());
+        env.put("PROOT_TMP_DIR", tmpDir().getAbsolutePath());
+        return env;
+    }
+
+    // ------------------------------------------------------------- install
+
+    /** Extract the bundled Ubuntu rootfs. Blocking; call from a background thread. */
+    public synchronized void install(Progress p) throws IOException {
+        if (!isBundled()) {
+            throw new IOException("Linux binaries are missing from this APK. "
+                    + "Build it with the GitHub Actions workflow (arm64 phones only).");
+        }
+
+        File root = rootfs();
+        if (root.exists()) {
+            p.update("Removing old install...");
+            deleteRecursive(root);
+        }
+        if (!root.mkdirs()) {
+            throw new IOException("Cannot create " + root);
+        }
+
+        p.update("Copying Ubuntu image...");
+        File archive = new File(ctx.getCacheDir(), "rootfs.tar.gz");
+        try (InputStream in = ctx.getAssets().open("rootfs.tar.gz");
+             OutputStream out = new FileOutputStream(archive)) {
+            byte[] buf = new byte[64 * 1024];
+            int n;
+            while ((n = in.read(buf)) > 0) {
+                out.write(buf, 0, n);
+            }
+        }
+
+        p.update("Extracting Ubuntu (1-2 minutes)...");
+        // Run tar under proot so hard links are emulated and ownership is faked.
+        List<String> cmd = new ArrayList<>();
+        cmd.add(proot().getAbsolutePath());
+        cmd.add("--link2symlink");
+        cmd.add("-0");
+        cmd.add("/system/bin/tar");
+        cmd.add("-xzf");
+        cmd.add(archive.getAbsolutePath());
+        cmd.add("-C");
+        cmd.add(root.getAbsolutePath());
+        String log = run(cmd);
+
+        //noinspection ResultOfMethodCallIgnored
+        archive.delete();
+
+        if (!new File(root, "usr/bin/bash").exists()) {
+            throw new IOException("Extraction failed:\n" + tail(log, 15));
+        }
+
+        p.update("Configuring...");
+        configure(root);
+
+        if (!new File(root, ".installed").createNewFile()) {
+            throw new IOException("Cannot write install marker");
+        }
+        p.update("Ubuntu installed");
+    }
+
+    private void configure(File root) throws IOException {
+        // DNS: ubuntu-base ships resolv.conf as a symlink to systemd's file, replace it.
+        File resolv = new File(root, "etc/resolv.conf");
+        Files.deleteIfExists(resolv.toPath());
+        write(resolv, "nameserver 8.8.8.8\nnameserver 1.1.1.1\n");
+
+        write(new File(root, "etc/hosts"),
+                "127.0.0.1 localhost\n::1 localhost ip6-localhost ip6-loopback\n");
+
+        // apt tries to drop privileges to the _apt user, which proot cannot do.
+        write(new File(root, "etc/apt/apt.conf.d/01-proot"),
+                "APT::Sandbox::User \"root\";\n");
+
+        //noinspection ResultOfMethodCallIgnored
+        new File(root, "root").mkdirs();
+        //noinspection ResultOfMethodCallIgnored
+        new File(root, "tmp").mkdirs();
+        //noinspection ResultOfMethodCallIgnored
+        new File(root, "tmp").setWritable(true, false);
+    }
+
+    private String run(List<String> cmd) throws IOException {
+        ProcessBuilder pb = new ProcessBuilder(cmd);
+        pb.redirectErrorStream(true);
+        pb.environment().putAll(hostEnv());
+        pb.directory(ctx.getFilesDir());
+        Process proc = pb.start();
+        StringBuilder sb = new StringBuilder();
+        try (BufferedReader br = new BufferedReader(
+                new InputStreamReader(proc.getInputStream(), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = br.readLine()) != null) {
+                sb.append(line).append('\n');
+            }
+        }
+        try {
+            proc.waitFor();
+        } catch (InterruptedException ignored) {
+        }
+        return sb.toString();
+    }
+
+    private static void write(File f, String content) throws IOException {
+        File parent = f.getParentFile();
+        if (parent != null) {
+            //noinspection ResultOfMethodCallIgnored
+            parent.mkdirs();
+        }
+        Files.deleteIfExists(f.toPath());
+        try (OutputStream out = new FileOutputStream(f)) {
+            out.write(content.getBytes(StandardCharsets.UTF_8));
+        }
+    }
+
+    private static void deleteRecursive(File f) throws IOException {
+        // Never follow symlinks: a link to /system or /sdcard must not be walked.
+        if (Files.isSymbolicLink(f.toPath())) {
+            Files.deleteIfExists(f.toPath());
+            return;
+        }
+        if (f.isDirectory()) {
+            File[] kids = f.listFiles();
+            if (kids != null) {
+                for (File k : kids) deleteRecursive(k);
+            }
+        }
+        //noinspection ResultOfMethodCallIgnored
+        f.setWritable(true);
+        Files.deleteIfExists(f.toPath());
+    }
+
+    private static String tail(String s, int lines) {
+        String[] parts = s.split("\n");
+        StringBuilder sb = new StringBuilder();
+        for (int i = Math.max(0, parts.length - lines); i < parts.length; i++) {
+            sb.append(parts[i]).append('\n');
+        }
+        return sb.toString();
+    }
+}

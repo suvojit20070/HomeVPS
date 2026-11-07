@@ -1,0 +1,46 @@
+apply plugin: 'com.android.application'
+
+android {
+    namespace 'com.suvo.homevps'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.suvo.homevps"
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+
+        // proot binaries are fetched for arm64 only (almost every modern phone).
+        ndk {
+            abiFilters 'arm64-v8a'
+        }
+    }
+
+    packagingOptions {
+        jniLibs {
+            // Extract .so files to nativeLibraryDir so proot can be executed from there.
+            useLegacyPackaging true
+        }
+    }
+
+    aaptOptions {
+        noCompress 'gz'
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
+
+dependencies {
+    // No external libraries. org.json is bundled with the Android platform.
+}

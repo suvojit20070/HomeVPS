@@ -1,0 +1,12 @@
+.gradle/
+build/
+app/build/
+local.properties
+.idea/
+*.iml
+.DS_Store
+captures/
+
+# Fetched at build time by scripts/fetch-linux.sh
+app/src/main/jniLibs/
+app/src/main/assets/rootfs.tar.gz
