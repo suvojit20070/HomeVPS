@@ -30,6 +30,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *
  * Routes (all under Bearer-token auth except GET /, /terminal and /health):
  *   GET    /  or /terminal                 web terminal page
+ *   GET    /tools.json                     OpenAI-style tool definitions for agents
  *   GET    /health
  *   GET    /sessions
  *   POST   /sessions                      {name, cwd}
@@ -56,6 +57,7 @@ public class ApiServer {
     private final String apiKey;
     private final SessionManager sessions;
     private final String terminalHtml;
+    private final String toolsJson;
     private final long startedAt = System.currentTimeMillis();
 
     private ServerSocket serverSocket;
@@ -63,11 +65,13 @@ public class ApiServer {
     private final AtomicBoolean running = new AtomicBoolean(false);
     private Thread acceptThread;
 
-    public ApiServer(int port, String apiKey, SessionManager sessions, String terminalHtml) {
+    public ApiServer(int port, String apiKey, SessionManager sessions, String terminalHtml,
+                     String toolsJson) {
         this.port = port;
         this.apiKey = apiKey;
         this.sessions = sessions;
         this.terminalHtml = terminalHtml;
+        this.toolsJson = toolsJson;
     }
 
     public void start() throws IOException {
@@ -186,6 +190,21 @@ public class ApiServer {
 
         if (method.equals("GET") && (path.equals("/") || path.equals("/terminal"))) {
             sendHtml(out, terminalHtml);
+            close(client);
+            return;
+        }
+
+        if (method.equals("GET") && path.equals("/tools.json")) {
+            // OpenAI-style tool definitions for agents (no secrets inside, so no auth).
+            byte[] payload = (toolsJson == null ? "[]" : toolsJson).getBytes(StandardCharsets.UTF_8);
+            String head = "HTTP/1.1 200 OK\r\n"
+                    + "Content-Type: application/json; charset=utf-8\r\n"
+                    + "Content-Length: " + payload.length + "\r\n"
+                    + CORS_HEADERS
+                    + "Connection: close\r\n\r\n";
+            out.write(head.getBytes(StandardCharsets.UTF_8));
+            out.write(payload);
+            out.flush();
             close(client);
             return;
         }

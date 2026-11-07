@@ -15,11 +15,12 @@ import android.util.Log;
 import com.suvo.homevps.linux.LinuxEnv;
 import com.suvo.homevps.server.ApiServer;
 import com.suvo.homevps.session.SessionManager;
+import com.suvo.homevps.tunnel.TunnelManager;
 import com.suvo.homevps.util.Prefs;
 
 /**
- * Foreground service that owns the session manager and the API server.
- * Started by the dashboard or, on reboot, by {@link BootReceiver}.
+ * Foreground service that owns the session manager, the API server and the
+ * internet tunnel. Started by the dashboard or, on reboot, by {@link BootReceiver}.
  */
 public class VpsService extends Service {
 
@@ -29,12 +30,14 @@ public class VpsService extends Service {
 
     public static final String ACTION_START = "com.suvo.homevps.START";
     public static final String ACTION_STOP = "com.suvo.homevps.STOP";
+    public static final String ACTION_TUNNEL_SYNC = "com.suvo.homevps.TUNNEL_SYNC";
 
     public static volatile boolean RUNNING = false;
     public static volatile int PORT = 0;
 
     private SessionManager sessionManager;
     private ApiServer apiServer;
+    private TunnelManager tunnel;
     private PowerManager.WakeLock wakeLock;
 
     @Override
@@ -47,23 +50,26 @@ public class VpsService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         String action = intent != null ? intent.getAction() : ACTION_START;
         if (ACTION_STOP.equals(action)) {
+            // Only an explicit stop clears the "keep running" flag used after reboot.
+            new Prefs(this).setDesiredRunning(false);
             stopEverything();
             stopSelf();
             return START_NOT_STICKY;
         }
-        startEverything();
+        boolean justStarted = startEverything();
+        if (ACTION_TUNNEL_SYNC.equals(action) && !justStarted) {
+            syncTunnel();
+        }
         return START_STICKY;
     }
 
-    private void startEverything() {
-        if (RUNNING) {
-            startForeground(NOTIF_ID, buildNotification());
-            return;
-        }
+    /** Returns true if the server was started by this call. */
+    private boolean startEverything() {
+        startForeground(NOTIF_ID, buildNotification());
+        if (RUNNING) return false;
+
         Prefs prefs = new Prefs(this);
         PORT = prefs.getPort();
-
-        startForeground(NOTIF_ID, buildNotification());
         acquireWakeLock();
 
         // Ubuntu (proot) if installed, otherwise the Android system shell.
@@ -72,7 +78,8 @@ public class VpsService extends Service {
                 prefs.getMaxSessions(),
                 prefs.getIdleTimeoutMin());
 
-        apiServer = new ApiServer(prefs.getPort(), prefs.getApiKey(), sessionManager, loadAsset("terminal.html"));
+        apiServer = new ApiServer(prefs.getPort(), prefs.getApiKey(), sessionManager,
+                loadAsset("terminal.html"), loadAsset("tools.json"));
         try {
             apiServer.start();
             RUNNING = true;
@@ -82,13 +89,35 @@ public class VpsService extends Service {
             Log.e(TAG, "Failed to start server", e);
             stopEverything();
             stopSelf();
+            return false;
+        }
+
+        tunnel = new TunnelManager(this, prefs.getPort(), this::updateNotification);
+        syncTunnel();
+        updateNotification();
+        return true;
+    }
+
+    /** Start or stop the tunnel to match the setting. */
+    private void syncTunnel() {
+        if (tunnel == null) return;
+        boolean enabled = new Prefs(this).isTunnelEnabled();
+        if (enabled) {
+            // Restart so a changed token/hostname takes effect.
+            tunnel.stop();
+            tunnel.start();
+        } else {
+            tunnel.stop();
         }
         updateNotification();
     }
 
     private void stopEverything() {
         RUNNING = false;
-        new Prefs(this).setDesiredRunning(false);
+        if (tunnel != null) {
+            tunnel.stop();
+            tunnel = null;
+        }
         if (apiServer != null) {
             apiServer.stop();
             apiServer = null;
@@ -151,9 +180,17 @@ public class VpsService extends Service {
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
         int port = new Prefs(this).getPort();
-        String text = RUNNING
-                ? "Server running on port " + port
-                : "Starting server…";
+        String text;
+        if (!RUNNING) {
+            text = "Starting server…";
+        } else if (TunnelManager.STATE == TunnelManager.State.ONLINE && TunnelManager.PUBLIC_URL != null) {
+            text = "Online: " + TunnelManager.PUBLIC_URL;
+        } else if (TunnelManager.STATE == TunnelManager.State.STARTING
+                || TunnelManager.STATE == TunnelManager.State.PREPARING) {
+            text = "Port " + port + " · connecting to the internet…";
+        } else {
+            text = "Running on port " + port + " (local network)";
+        }
 
         Notification.Builder b;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -166,6 +203,7 @@ public class VpsService extends Service {
                 .setContentText(text)
                 .setSmallIcon(android.R.drawable.ic_menu_manage)
                 .setOngoing(true)
+                .setOnlyAlertOnce(true)
                 .setContentIntent(openPending)
                 .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Stop", stopPending);
         return b.build();
@@ -190,16 +228,20 @@ public class VpsService extends Service {
     // --- convenience launchers -------------------------------------------
 
     public static void startServer(Context ctx) {
-        Intent i = new Intent(ctx, VpsService.class).setAction(ACTION_START);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            ctx.startForegroundService(i);
-        } else {
-            ctx.startService(i);
-        }
+        send(ctx, ACTION_START);
     }
 
     public static void stopServer(Context ctx) {
-        Intent i = new Intent(ctx, VpsService.class).setAction(ACTION_STOP);
+        send(ctx, ACTION_STOP);
+    }
+
+    /** Apply the tunnel setting (starts the server too if it is not running). */
+    public static void syncTunnel(Context ctx) {
+        send(ctx, ACTION_TUNNEL_SYNC);
+    }
+
+    private static void send(Context ctx, String action) {
+        Intent i = new Intent(ctx, VpsService.class).setAction(action);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             ctx.startForegroundService(i);
         } else {

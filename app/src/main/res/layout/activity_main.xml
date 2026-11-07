@@ -31,11 +31,46 @@
             android:textColor="#8A8F98"
             android:textSize="14sp" />
 
-        <!-- Status card -->
+        <!-- Setup guide -->
+        <LinearLayout
+            android:id="@+id/guideCard"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:background="#1A1C21"
+            android:orientation="vertical"
+            android:padding="14dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_margin="4dp"
+                android:text="Setup guide"
+                android:textColor="#FFFFFF"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/guideProgress"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_margin="4dp"
+                android:text="0 of 5 done"
+                android:textColor="#8A8F98"
+                android:textSize="13sp" />
+
+            <LinearLayout
+                android:id="@+id/guideList"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+        </LinearLayout>
+
+        <!-- Server -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
+            android:layout_marginTop="14dp"
             android:background="#1A1C21"
             android:orientation="vertical"
             android:padding="16dp">
@@ -55,9 +90,10 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_margin="4dp"
-                android:text="Local IP: -   Port: -"
+                android:text="Local address: -"
                 android:textColor="#C7CBD1"
-                android:textSize="14sp" />
+                android:textSize="14sp"
+                android:fontFamily="monospace" />
 
             <Button
                 android:id="@+id/toggleButton"
@@ -67,68 +103,6 @@
                 android:text="Start server"
                 android:textColor="#0E0F12"
                 android:backgroundTint="#4CC2FF" />
-        </LinearLayout>
-
-        <!-- Linux card -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
-            android:background="#1A1C21"
-            android:orientation="vertical"
-            android:padding="16dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_margin="4dp"
-                android:text="Linux environment"
-                android:textColor="#8A8F98"
-                android:textSize="13sp" />
-
-            <TextView
-                android:id="@+id/linuxStatusText"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_margin="4dp"
-                android:text="Ubuntu: not installed"
-                android:textColor="#FFFFFF"
-                android:textSize="15sp" />
-
-            <Button
-                android:id="@+id/installLinuxButton"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_margin="6dp"
-                android:text="Install Ubuntu" />
-        </LinearLayout>
-
-        <!-- Endpoint card -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
-            android:background="#1A1C21"
-            android:orientation="vertical"
-            android:padding="16dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_margin="4dp"
-                android:text="API endpoint"
-                android:textColor="#8A8F98"
-                android:textSize="13sp" />
-
-            <TextView
-                android:id="@+id/endpointText"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_margin="4dp"
-                android:text="http://-:-"
-                android:textColor="#FFFFFF"
-                android:textSize="16sp"
-                android:fontFamily="monospace" />
 
             <Button
                 android:id="@+id/terminalButton"
@@ -138,7 +112,165 @@
                 android:text="Open web terminal" />
         </LinearLayout>
 
-        <!-- API key card -->
+        <!-- Internet access -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:background="#1A1C21"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_margin="4dp"
+                        android:text="Internet access"
+                        android:textColor="#FFFFFF"
+                        android:textSize="17sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_margin="4dp"
+                        android:text="Reach this phone from anywhere, even on mobile data"
+                        android:textColor="#8A8F98"
+                        android:textSize="13sp" />
+                </LinearLayout>
+
+                <Switch
+                    android:id="@+id/tunnelSwitch"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_margin="4dp" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/tunnelStatusText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_margin="4dp"
+                android:text="Off"
+                android:textColor="#C7CBD1"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/publicUrlText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_margin="4dp"
+                android:fontFamily="monospace"
+                android:text=""
+                android:textColor="#3DDC84"
+                android:textIsSelectable="true"
+                android:textSize="14sp"
+                android:visibility="gone" />
+
+            <LinearLayout
+                android:id="@+id/publicUrlButtons"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:visibility="gone">
+
+                <Button
+                    android:id="@+id/copyUrlButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_margin="6dp"
+                    android:layout_weight="1"
+                    android:text="Copy link" />
+
+                <Button
+                    android:id="@+id/openPublicButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_margin="6dp"
+                    android:layout_weight="1"
+                    android:text="Open terminal" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_margin="4dp"
+                android:text="Anyone with the link and your API key can run commands on this phone. Keep the key private."
+                android:textColor="#FFB86B"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/advancedToggle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_margin="4dp"
+                android:layout_marginTop="10dp"
+                android:padding="4dp"
+                android:text="Fixed address (optional) ▾"
+                android:textColor="#4CC2FF"
+                android:textSize="14sp" />
+
+            <LinearLayout
+                android:id="@+id/advancedBox"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_margin="4dp"
+                    android:text="Without this, you get a free random link (https://….trycloudflare.com) that changes when the tunnel restarts.\n\nFor a link that never changes: in the Cloudflare dashboard open Zero Trust → Networks → Tunnels → Create a tunnel (Cloudflared). Copy the token, then add a Public Hostname (e.g. vps.yourdomain.com) pointing to http://localhost:8090. Paste both below."
+                    android:textColor="#8A8F98"
+                    android:textSize="12sp" />
+
+                <EditText
+                    android:id="@+id/tokenEdit"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_margin="4dp"
+                    android:hint="Tunnel token"
+                    android:inputType="textNoSuggestions|textVisiblePassword"
+                    android:singleLine="true"
+                    android:textColor="#FFFFFF"
+                    android:textColorHint="#6B7078"
+                    android:textSize="14sp" />
+
+                <EditText
+                    android:id="@+id/hostnameEdit"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_margin="4dp"
+                    android:hint="Public hostname, e.g. vps.yourdomain.com"
+                    android:inputType="textUri"
+                    android:singleLine="true"
+                    android:textColor="#FFFFFF"
+                    android:textColorHint="#6B7078"
+                    android:textSize="14sp" />
+
+                <Button
+                    android:id="@+id/saveTunnelButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_margin="6dp"
+                    android:text="Save and reconnect" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Connect your agent -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -151,6 +283,33 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_margin="4dp"
+                android:text="Connect your agent"
+                android:textColor="#FFFFFF"
+                android:textSize="17sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_margin="4dp"
+                android:text="Copies the address, API key, endpoints and the tool list. Paste it into your agent settings or system prompt."
+                android:textColor="#8A8F98"
+                android:textSize="13sp" />
+
+            <Button
+                android:id="@+id/copyDetailsButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_margin="6dp"
+                android:text="Copy connection details"
+                android:textColor="#06210F"
+                android:backgroundTint="#3DDC84" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_margin="4dp"
+                android:layout_marginTop="10dp"
                 android:text="API key (Bearer token)"
                 android:textColor="#8A8F98"
                 android:textSize="13sp" />
@@ -160,10 +319,11 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_margin="4dp"
+                android:fontFamily="monospace"
                 android:text="-"
                 android:textColor="#FFD479"
-                android:textSize="13sp"
-                android:fontFamily="monospace" />
+                android:textIsSelectable="true"
+                android:textSize="13sp" />
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -174,21 +334,56 @@
                     android:id="@+id/copyKeyButton"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
                     android:layout_margin="6dp"
+                    android:layout_weight="1"
                     android:text="Copy key" />
 
                 <Button
                     android:id="@+id/regenKeyButton"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
                     android:layout_margin="6dp"
-                    android:text="Regenerate" />
+                    android:layout_weight="1"
+                    android:text="New key" />
             </LinearLayout>
         </LinearLayout>
 
-        <!-- Settings card -->
+        <!-- Ubuntu -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:background="#1A1C21"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_margin="4dp"
+                android:text="Linux (Ubuntu)"
+                android:textColor="#FFFFFF"
+                android:textSize="17sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/linuxStatusText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_margin="4dp"
+                android:text="Not installed"
+                android:textColor="#C7CBD1"
+                android:textSize="14sp" />
+
+            <Button
+                android:id="@+id/installLinuxButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_margin="6dp"
+                android:text="Install Ubuntu" />
+        </LinearLayout>
+
+        <!-- Settings -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -200,15 +395,15 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
 
                 <TextView
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
                     android:layout_margin="4dp"
-                    android:text="Auto-start on reboot"
+                    android:layout_weight="1"
+                    android:text="Start automatically after reboot"
                     android:textColor="#FFFFFF"
                     android:textSize="15sp" />
 
@@ -225,15 +420,14 @@
                 android:layout_height="wrap_content"
                 android:layout_margin="6dp"
                 android:text="Allow unrestricted battery" />
-        </LinearLayout>
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_margin="6dp"
-            android:layout_marginTop="16dp"
-            android:text="Tip: on Xiaomi / Realme / Oppo phones, also enable Autostart for this app in the system settings, or the server will not restart after reboot."
-            android:textColor="#6B7078"
-            android:textSize="12sp" />
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_margin="4dp"
+                android:text="On Xiaomi, Realme, Oppo and Vivo phones also turn on Autostart for this app in the phone settings, or Android may stop the server."
+                android:textColor="#6B7078"
+                android:textSize="12sp" />
+        </LinearLayout>
     </LinearLayout>
 </ScrollView>

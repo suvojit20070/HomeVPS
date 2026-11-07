@@ -14,6 +14,7 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -124,6 +125,16 @@ public class LinuxEnv {
     }
 
     public ShellSpec linuxSpec() {
+        List<String> cmd = guestCommand("/bin/bash", "--login");
+        return new ShellSpec(cmd, hostEnv(), ctx.getFilesDir(), "/root", true,
+                rootfs().getAbsolutePath());
+    }
+
+    /**
+     * Command line that runs a program inside Ubuntu, e.g. guestCommand("/usr/bin/python3", "x.py").
+     * Start it with {@link #hostEnvironment()} as the environment and {@link #hostDir()} as cwd.
+     */
+    public List<String> guestCommand(String... guestArgs) {
         String root = rootfs().getAbsolutePath();
         List<String> cmd = new ArrayList<>();
         cmd.add(proot().getAbsolutePath());
@@ -158,10 +169,16 @@ public class LinuxEnv {
         cmd.add("LANG=C.UTF-8");
         cmd.add("PYTHONUNBUFFERED=1");
         cmd.add("DEBIAN_FRONTEND=noninteractive");
-        cmd.add("/bin/bash");
-        cmd.add("--login");
+        Collections.addAll(cmd, guestArgs);
+        return cmd;
+    }
 
-        return new ShellSpec(cmd, hostEnv(), ctx.getFilesDir(), "/root", true, root);
+    public Map<String, String> hostEnvironment() {
+        return hostEnv();
+    }
+
+    public File hostDir() {
+        return ctx.getFilesDir();
     }
 
     private Map<String, String> hostEnv() {
@@ -294,12 +311,49 @@ public class LinuxEnv {
         write(new File(root, "etc/apt/apt.conf.d/01-proot"),
                 "APT::Sandbox::User \"root\";\n");
 
+        ensureCaBundle();
+
         //noinspection ResultOfMethodCallIgnored
         new File(root, "root").mkdirs();
         //noinspection ResultOfMethodCallIgnored
         new File(root, "tmp").mkdirs();
         //noinspection ResultOfMethodCallIgnored
         new File(root, "tmp").setWritable(true, false);
+    }
+
+    /**
+     * ubuntu-base ships without CA certificates, so HTTPS (cloudflared, curl, pip, git)
+     * fails. Build the bundle from Android's own trusted certificates if it is missing.
+     */
+    public void ensureCaBundle() throws IOException {
+        File bundle = new File(rootfs(), "etc/ssl/certs/ca-certificates.crt");
+        if (bundle.isFile() && bundle.length() > 10_000) return;
+
+        String[] dirs = {"/apex/com.android.conscrypt/cacerts", "/system/etc/security/cacerts"};
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        StringBuilder pem = new StringBuilder();
+        for (String d : dirs) {
+            File[] files = new File(d).listFiles();
+            if (files == null) continue;
+            for (File f : files) {
+                if (!seen.add(f.getName())) continue;
+                String text;
+                try {
+                    text = new String(Files.readAllBytes(f.toPath()), StandardCharsets.UTF_8);
+                } catch (IOException e) {
+                    continue;
+                }
+                int b = text.indexOf("-----BEGIN CERTIFICATE-----");
+                int e = text.indexOf("-----END CERTIFICATE-----");
+                if (b >= 0 && e > b) {
+                    pem.append(text, b, e + "-----END CERTIFICATE-----".length()).append('\n');
+                }
+            }
+        }
+        if (pem.length() == 0) {
+            throw new IOException("No CA certificates found on this phone");
+        }
+        write(bundle, pem.toString());
     }
 
     private String run(List<String> cmd) throws IOException {

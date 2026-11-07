@@ -233,11 +233,32 @@ For long builds: call `run_command` with a short `timeout`; if it returns
 `timed_out: true`, the command is still running — poll `read_output` with the
 `next_offset` from the previous response until the session is idle again.
 
-## Remote access (outside your WiFi)
+## Setup guide (in the app)
 
-Mobile networks use CGNAT, so port-forwarding usually won't work. Run a Cloudflare
-Tunnel (Phase 4) to get a stable public HTTPS URL:
-`cloudflared tunnel --url http://localhost:8090`.
+The top of the dashboard is a 5-step checklist that updates itself: Install Ubuntu,
+Allow unrestricted battery, Start the server, Turn on internet access, Connect your
+agent. Each step has its own button.
+
+## Internet access (Cloudflare Tunnel)
+
+Flip **Internet access** in the app. It downloads `cloudflared` into Ubuntu once and
+connects out to Cloudflare, so it works on mobile data and behind CGNAT, with no port
+forwarding and no account. You get a public link like
+`https://random-words.trycloudflare.com`, shown in the app and in the notification.
+
+That free link changes whenever the tunnel restarts. For a fixed address, create a
+tunnel in the Cloudflare dashboard (Zero Trust > Networks > Tunnels), add a public
+hostname pointing to `http://localhost:8090`, and paste the token and hostname under
+**Fixed address** in the app.
+
+Anyone with the link and the API key can run commands on the phone. Keep the key
+private and use **New key** if it leaks.
+
+## Connecting an agent
+
+**Copy connection details** in the app copies the base URL (public if internet
+access is on), the API key, every endpoint, and the tool list address. Tool
+definitions in OpenAI format are served at `GET /tools.json` (no auth).
 
 ## Android notes
 

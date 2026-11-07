@@ -17,13 +17,13 @@ import java.util.Set;
  * Reads the process tree from /proc. Android lets an app see its own
  * processes, which is all we need to find what a session's shell is running.
  */
-final class ProcTree {
+public final class ProcTree {
 
     private ProcTree() {
     }
 
     /** pid -> parent pid for every process we can see. */
-    static Map<Integer, Integer> parents() {
+    public static Map<Integer, Integer> parents() {
         Map<Integer, Integer> map = new HashMap<>();
         File[] entries = new File("/proc").listFiles();
         if (entries == null) return map;
@@ -59,7 +59,7 @@ final class ProcTree {
         }
     }
 
-    static Set<Integer> childrenOf(int parent) {
+    public static Set<Integer> childrenOf(int parent) {
         Set<Integer> out = new HashSet<>();
         for (Map.Entry<Integer, Integer> e : parents().entrySet()) {
             if (e.getValue() == parent) out.add(e.getKey());
@@ -68,7 +68,7 @@ final class ProcTree {
     }
 
     /** All descendants of root (not root itself), parents before children. */
-    static List<Integer> descendantsOf(int root) {
+    public static List<Integer> descendantsOf(int root) {
         Map<Integer, Integer> parents = parents();
         List<Integer> out = new ArrayList<>();
         ArrayDeque<Integer> queue = new ArrayDeque<>();
@@ -89,7 +89,7 @@ final class ProcTree {
      * PID of a started Process. Tries the private "pid" field first; if Android blocks
      * that, falls back to the new child that appeared since the 'before' snapshot.
      */
-    static int pidOf(Process p, Set<Integer> before) {
+    public static int pidOf(Process p, Set<Integer> before) {
         try {
             Field f = p.getClass().getDeclaredField("pid");
             f.setAccessible(true);

@@ -20,6 +20,10 @@ public class Prefs {
     public static final String KEY_AUTOSTART = "autostart";
     public static final String KEY_IDLE_TIMEOUT_MIN = "idle_timeout_min";
     public static final String KEY_MAX_SESSIONS = "max_sessions";
+    public static final String KEY_TUNNEL_ENABLED = "tunnel_enabled";
+    public static final String KEY_TUNNEL_TOKEN = "tunnel_token";
+    public static final String KEY_TUNNEL_HOSTNAME = "tunnel_hostname";
+    public static final String KEY_AGENT_DETAILS_COPIED = "agent_details_copied";
 
     private final SharedPreferences sp;
 
@@ -77,6 +81,41 @@ public class Prefs {
 
     public void setMaxSessions(int max) {
         sp.edit().putInt(KEY_MAX_SESSIONS, max).apply();
+    }
+
+    /** Internet access through a Cloudflare Tunnel. */
+    public boolean isTunnelEnabled() {
+        return sp.getBoolean(KEY_TUNNEL_ENABLED, false);
+    }
+
+    public void setTunnelEnabled(boolean enabled) {
+        sp.edit().putBoolean(KEY_TUNNEL_ENABLED, enabled).apply();
+    }
+
+    /** Empty = quick tunnel (random trycloudflare.com link). */
+    public String getTunnelToken() {
+        return sp.getString(KEY_TUNNEL_TOKEN, "");
+    }
+
+    public void setTunnelToken(String token) {
+        sp.edit().putString(KEY_TUNNEL_TOKEN, token).apply();
+    }
+
+    /** Hostname configured for the token tunnel in Cloudflare, e.g. vps.example.com. */
+    public String getTunnelHostname() {
+        return sp.getString(KEY_TUNNEL_HOSTNAME, "");
+    }
+
+    public void setTunnelHostname(String host) {
+        sp.edit().putString(KEY_TUNNEL_HOSTNAME, host).apply();
+    }
+
+    public boolean isAgentDetailsCopied() {
+        return sp.getBoolean(KEY_AGENT_DETAILS_COPIED, false);
+    }
+
+    public void setAgentDetailsCopied(boolean copied) {
+        sp.edit().putBoolean(KEY_AGENT_DETAILS_COPIED, copied).apply();
     }
 
     private static String generateKey() {

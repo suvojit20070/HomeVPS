@@ -1,0 +1,87 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "start_session",
+      "description": "Start a new named shell session (Ubuntu bash, root) on the phone VPS. Sessions keep their working directory and variables between commands.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name": {"type": "string", "description": "Session name, letters/digits/_.- only, e.g. bot1"},
+          "cwd": {"type": "string", "description": "Working directory, default /root"}
+        },
+        "required": ["name"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "run_command",
+      "description": "Run a shell command in a session and return its output and exit code. If timed_out is true the command is still running; read the rest with read_output.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name": {"type": "string", "description": "Session name"},
+          "command": {"type": "string", "description": "Shell command. Use -y with apt-get."},
+          "timeout": {"type": "integer", "description": "Milliseconds to wait, default 60000"}
+        },
+        "required": ["name", "command"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "send_input",
+      "description": "Send text to the running command's stdin, e.g. to answer a prompt. End with \\n to press Enter.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name": {"type": "string"},
+          "data": {"type": "string"}
+        },
+        "required": ["name", "data"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "interrupt",
+      "description": "Press Ctrl+C in a session to stop the running command.",
+      "parameters": {
+        "type": "object",
+        "properties": {"name": {"type": "string"}},
+        "required": ["name"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "read_output",
+      "description": "Read buffered output of a session from an offset (use next_offset from the previous call). Useful for long or background commands.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name": {"type": "string"},
+          "since": {"type": "integer", "description": "Offset to read from, default 0"}
+        },
+        "required": ["name"]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "stop_session",
+      "description": "Stop a session and everything running in it.",
+      "parameters": {
+        "type": "object",
+        "properties": {"name": {"type": "string"}},
+        "required": ["name"]
+      }
+    }
+  }
+]
